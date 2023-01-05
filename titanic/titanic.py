@@ -5,7 +5,7 @@ import sklearn.model_selection
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
 from sklearn.metrics import f1_score
-# import matplotlib as plt
+import matplotlib as plt
 
 import torch
 import torch.nn as nn
@@ -28,24 +28,11 @@ def write_answer(answer, filename):
     answer_df.to_csv(filename, index=False)
 
 
-def encode(df):
-    del df["PassengerId"]
-    for col in df.columns:
-        if df[col].dtype == "int64":
-            df[col] = df[col].astype("float64")
-        if df[col].dtype == "float64":
-            continue
-        if True or len(df[col].unique()) > 5:
-            df = df.drop(columns=col)
-            pass
-        continue
-    return df
-
-
 def read_input():
     full_train = pd.read_csv("train.csv")
     X_train = full_train.drop(columns=["PassengerId", "Survived"])
-    bad_columns = [c for c in X_train.columns if (X_train[c].dtype == "object" and X_train[c].unique().size > 5)]
+    bad_columns = [c for c in X_train.columns if (
+        X_train[c].dtype == "object" and X_train[c].unique().size > 5)]
     X_train = pd.get_dummies(X_train.drop(columns=bad_columns))
     y_train = full_train["Survived"].to_numpy()
     X_test = pd.read_csv("test.csv").drop(columns="PassengerId")
@@ -64,7 +51,8 @@ def read_input():
 
 X_train, y_train, X_test = read_input()
 
-X_train, X_val, y_train, y_val = sklearn.model_selection.train_test_split(X_train, y_train, test_size=0.2)
+X_train, X_val, y_train, y_val = sklearn.model_selection.train_test_split(
+    X_train, y_train, test_size=0.2)
 
 
 def to_torch_tensor(arr):
@@ -89,25 +77,44 @@ network = nn.Sequential(
     nn.Sigmoid()
 )
 
-optimizer = torch.optim.Adam(network.parameters(), lr=2e-3)
 
-losses = []
-val_losses = []
-epochs_nums = 500
-for i in range(epochs_nums):
-    y_pred = network(X_train)
-    loss = F.binary_cross_entropy(y_pred, y_train)
+class Tracker:
+    def __init__(self, project, api_token):
+        import neptune.new as neptune
+        self.run = neptune.init_run(project, api_token)
 
-    optimizer.zero_grad()
+    def scalar(self, name, value):
+        self.run[name].log(value)
+    
+    def model(self, model):
+        params = model.named_parameters()
+        print(params)
 
-    loss.backward()
 
-    optimizer.step()
 
-    losses.append(loss.item())
+tracker = Tracker(project="WideLearning/Titanic",
+                  api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI5NTIzY2UxZC1jMjI5LTRlYTQtYjQ0Yi1kM2JhMGU1NDllYTIifQ==")
 
-    y_val_pred = network(X_val)
-    val_losses.append(F.binary_cross_entropy(y_val_pred, y_val).item())
+tracker.model(network)
 
-answer = network(X_test).detach().numpy().reshape(X_test.shape[0]).round().astype(int)
-write_answer(answer, "answer.csv")
+
+# optimizer = torch.optim.Adam(network.parameters(), lr=2e-3)
+
+# epochs_nums = 500
+
+# for i in range(epochs_nums):
+#     y_pred = network(X_train)
+#     loss = F.binary_cross_entropy(y_pred, y_train)
+#     tracker.scalar("train/loss", loss.item())
+
+#     optimizer.zero_grad()
+#     loss.backward()
+#     optimizer.step()
+
+#     y_pred = network(X_val)
+#     loss = F.binary_cross_entropy(y_pred, y_val)
+#     tracker.scalar("val/loss", loss.item())
+
+# answer = network(X_test).detach().numpy().reshape(
+#     X_test.shape[0]).round().astype(int)
+# write_answer(answer, "answer.csv")
