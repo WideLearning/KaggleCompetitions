@@ -70,13 +70,6 @@ X_test = to_torch_tensor(X_test)
 y_train = to_torch_1d(y_train)
 y_val = to_torch_1d(y_val)
 
-network = nn.Sequential(
-    nn.Linear(X_train.shape[1], 200),
-    nn.PReLU(),
-    nn.Linear(200, 1),
-    nn.Sigmoid()
-)
-
 
 class Tracker:
     def __init__(self, project, api_token):
@@ -87,34 +80,40 @@ class Tracker:
         self.run[name].log(value)
     
     def model(self, model):
-        params = model.named_parameters()
-        print(params)
-
+        for name, param in model.named_parameters():
+            self.scalar(name, param.abs().log().mean())
+            self.scalar(name + "_grad", param.grad.abs().log().mean())
 
 
 tracker = Tracker(project="WideLearning/Titanic",
                   api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI5NTIzY2UxZC1jMjI5LTRlYTQtYjQ0Yi1kM2JhMGU1NDllYTIifQ==")
 
-tracker.model(network)
+network = nn.Sequential(
+    nn.Linear(X_train.shape[1], 200),
+    nn.PReLU(),
+    nn.Linear(200, 1),
+    nn.Sigmoid()
+)
 
+optimizer = torch.optim.Adam(network.parameters(), lr=2e-3)
 
-# optimizer = torch.optim.Adam(network.parameters(), lr=2e-3)
+epochs_nums = 500
 
-# epochs_nums = 500
+for i in range(epochs_nums):
+    y_pred = network(X_train)
+    loss = F.binary_cross_entropy(y_pred, y_train)
+    tracker.scalar("train/loss", loss.item())
 
-# for i in range(epochs_nums):
-#     y_pred = network(X_train)
-#     loss = F.binary_cross_entropy(y_pred, y_train)
-#     tracker.scalar("train/loss", loss.item())
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
 
-#     optimizer.zero_grad()
-#     loss.backward()
-#     optimizer.step()
+    tracker.model(network)
 
-#     y_pred = network(X_val)
-#     loss = F.binary_cross_entropy(y_pred, y_val)
-#     tracker.scalar("val/loss", loss.item())
+    y_pred = network(X_val)
+    loss = F.binary_cross_entropy(y_pred, y_val)
+    tracker.scalar("val/loss", loss.item())
 
-# answer = network(X_test).detach().numpy().reshape(
-#     X_test.shape[0]).round().astype(int)
-# write_answer(answer, "answer.csv")
+answer = network(X_test).detach().numpy().reshape(
+    X_test.shape[0]).round().astype(int)
+write_answer(answer, "answer.csv")
