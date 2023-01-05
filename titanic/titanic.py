@@ -28,20 +28,6 @@ def write_answer(answer, filename):
     answer_df.to_csv(filename, index=False)
 
 
-def encode(df):
-    del df["PassengerId"]
-    for col in df.columns:
-        if df[col].dtype == "int64":
-            df[col] = df[col].astype("float64")
-        if df[col].dtype == "float64":
-            continue
-        if True or len(df[col].unique()) > 5:
-            df = df.drop(columns=col)
-            pass
-        continue
-    return df
-
-
 def read_input():
     full_train = pd.read_csv("train.csv")
     X_train = full_train.drop(columns=["PassengerId", "Survived"])
