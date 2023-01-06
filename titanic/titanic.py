@@ -1,19 +1,18 @@
+import matplotlib as plt
 import numpy as np
 import pandas as pd
-from sklearn import preprocessing
 import sklearn.model_selection
-from sklearn.experimental import enable_iterative_imputer
-from sklearn.impute import IterativeImputer
-from sklearn.metrics import f1_score
-import matplotlib as plt
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as opt
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn import preprocessing
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
+from sklearn.metrics import f1_score
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
+from tracker import Tracker
 
 
 def write_answer(answer, filename):
@@ -71,22 +70,6 @@ y_train = to_torch_1d(y_train)
 y_val = to_torch_1d(y_val)
 
 
-class Tracker:
-    def __init__(self, project, api_token):
-        import neptune.new as neptune
-        self.run = neptune.init_run(project, api_token)
-
-    def scalar(self, name, value):
-        self.run[name].log(value)
-    
-    def model(self, model):
-        for name, param in model.named_parameters():
-            self.scalar(name, param.abs().log().mean())
-            self.scalar(name + "_grad", param.grad.abs().log().mean())
-
-
-tracker = Tracker(project="WideLearning/Titanic",
-                  api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI5NTIzY2UxZC1jMjI5LTRlYTQtYjQ0Yi1kM2JhMGU1NDllYTIifQ==")
 
 network = nn.Sequential(
     nn.Linear(X_train.shape[1], 200),
@@ -95,9 +78,13 @@ network = nn.Sequential(
     nn.Sigmoid()
 )
 
+tracker = Tracker(project="WideLearning/Titanic",
+                  api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI5NTIzY2UxZC1jMjI5LTRlYTQtYjQ0Yi1kM2JhMGU1NDllYTIifQ==")
+tracker.set_hooks(network)
+
 optimizer = torch.optim.Adam(network.parameters(), lr=2e-3)
 
-epochs_nums = 500
+epochs_nums = 10
 
 for i in range(epochs_nums):
     y_pred = network(X_train)
@@ -116,4 +103,4 @@ for i in range(epochs_nums):
 
 answer = network(X_test).detach().numpy().reshape(
     X_test.shape[0]).round().astype(int)
-write_answer(answer, "answer.csv")
+write_answer(answer, "submission.csv")
