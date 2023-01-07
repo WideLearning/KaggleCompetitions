@@ -8,11 +8,14 @@ run = neptune.init_run(project="WideLearning/Titanic",
                        )
 
 # print(dir(run))
-for name, series in run.get_structure().items():
-    if isinstance(series, dict):
-        continue
-    print(name)
-    data = series.fetch_values()["value"].to_numpy()
-    plt.plot(data, label=name)
+# for name, series in run.get_structure().items():
+#     if isinstance(series, dict):
+#         continue
+#     print(name)
+#     data = series.fetch_values()["value"].to_numpy()
+#     plt.plot(data, label=name)
+
+print(run.get_structure())
+
 plt.legend()
 plt.show()

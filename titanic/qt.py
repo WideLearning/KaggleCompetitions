@@ -1,74 +1,131 @@
 import sys
+import pdb
+
 import numpy as np
-from PyQt5.Qt import Qt
-from PyQt5.QtWidgets import QApplication, QMainWindow, QSpinBox, QVBoxLayout, QWidget
-from matplotlib.backends.backend_qt5agg import FigureCanvas
+from matplotlib.backends.backend_qt5agg import FigureCanvas, NavigationToolbar2QT
 from matplotlib.figure import Figure
+from matplotlib.gridspec import GridSpec
+import neptune.new as neptune
+from PyQt5.Qt import Qt
+from PyQt5.QtWidgets import (QApplication, QGridLayout, QHBoxLayout,
+                             QMainWindow, QRadioButton, QSpinBox, QVBoxLayout,
+                             QWidget)
 
 
-class MainWindow(QMainWindow):
+class Loader:
+    def __init__(self, project, api_token, run, ):
+        self.data = neptune.init_run(
+            project,
+            api_token,
+            run, mode="read-only"
+        ).get_structure()
+
+        self.series = [name for name, series in self.data.items()
+                       if not isinstance(series, dict)]
+        print(self.series)
+        self.fetched = {}
+
+    def get(self, name):
+        if name not in self.fetched:
+            path = name.split("/")
+            node = self.data
+            for elem in path:
+                node = node[elem]
+            self.fetched[name] = node.fetch_values()["value"].to_numpy()
+        return self.fetched[name]
+
+
+loader = Loader(project="WideLearning/Titanic",
+                api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI5NTIzY2UxZC1jMjI5LTRlYTQtYjQ0Yi1kM2JhMGU1NDllYTIifQ==",
+                run="TIT-16")
+
+class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
 
-        # Create the sliders
-        self.slider1 = QSpinBox()
-        self.slider2 = QSpinBox()
+        # Create the input widgets
+        self.epoch_spinbox = QSpinBox()
+        self.epoch_spinbox.setPrefix("Epoch: ")
+        self.epoch_spinbox.setFixedWidth(200)
+        self.epoch_spinbox.setMaximum(10**9)
 
-        # Set the minimum and maximum values for the sliders
-        self.slider1.setMinimum(0)
-        self.slider1.setMaximum(100)
-        self.slider2.setMinimum(0)
-        self.slider2.setMaximum(100)
+        self.layer_spinbox = QSpinBox()
+        self.layer_spinbox.setPrefix("Layer: ")
+        self.layer_spinbox.setFixedWidth(200)
+        self.layer_spinbox.setMaximum(10**9)
 
-        # Connect the valueChanged signal of the sliders to the update_plot slot
-        self.slider1.valueChanged.connect(self.update_plot)
-        self.slider2.valueChanged.connect(self.update_plot)
+        self.weight_button = QRadioButton("w")
+        self.weight_button.setChecked(True)
+        self.gradient_button = QRadioButton("∇")
+
+        # Connect the valueChanged signal of the inputs to the update_plot slot
+        self.epoch_spinbox.valueChanged.connect(self.update_plot)
+        self.layer_spinbox.valueChanged.connect(self.update_plot)
 
         # Create the matplotlib figure and canvas
-        self.figure = Figure()
-        self.canvas = FigureCanvas(self.figure)
+        self.canvas = FigureCanvas(Figure())
+        self.toolbar = NavigationToolbar2QT(self.canvas)
 
-        # Create a vertical layout to hold the sliders and the canvas
-        self.layout = QVBoxLayout()
+        # Create layouts
+        self.main_layout = QVBoxLayout()
+        self.input_layout = QHBoxLayout()
 
         # Add the sliders and the canvas to the layout
-        self.layout.addWidget(self.slider1)
-        self.layout.addWidget(self.slider2)
-        self.layout.addWidget(self.canvas)
+        self.main_layout.addLayout(self.input_layout)
+        self.main_layout.addWidget(self.canvas)
+        self.input_layout.addWidget(self.toolbar)
+        self.input_layout.addWidget(self.weight_button)
+        self.input_layout.addWidget(self.gradient_button)
+        self.input_layout.addWidget(self.epoch_spinbox)
+        self.input_layout.addWidget(self.layer_spinbox)
 
-        # Create a central widget to hold the layout
-        self.central_widget = QWidget()
-        self.central_widget.setLayout(self.layout)
-
-        # Set the central widget of the main window
-        self.setCentralWidget(self.central_widget)
-
+        # # Set the central widget of the main window
+        # self.setCentralWidget(self.central_widget)
+        self.setLayout(self.main_layout)
         # Initialize the plot
         self.update_plot()
 
     def update_plot(self):
         # Get the values of the sliders
-        slider1_value = self.slider1.value()
-        slider2_value = self.slider2.value()
+        epoch = self.epoch_spinbox.value()
+        layer = self.layer_spinbox.value()
 
-        # Generate some random data
-        data = np.random.rand(slider1_value, slider2_value)
+        gs = GridSpec(3, 4)
+        self.canvas.figure.clear()
 
-        # Clear the figure
-        self.figure.clear()
+        ax_loss = self.canvas.figure.add_subplot(gs[0, :2])
+        ax_loss.set_title("Loss")
+        val_loss = loader.get("val/loss")
+        ax_loss.plot(val_loss, color="blue", lw=1)
+        train_loss = loader.get("train/loss")
+        ax_loss.plot(train_loss, "--", color="blue", lw=1)
+        ax_loss.axvline(x=epoch, color="red", lw=0.5)
 
-        # Add a subplot to the figure
-        ax = self.figure.add_subplot(1, 1, 1)
+        ax_netpath = self.canvas.figure.add_subplot(gs[0, 2])
+        ax_netpath.set_title("Network path")
+        
+        ax_layerpath = self.canvas.figure.add_subplot(gs[0, 3])
+        ax_layerpath.set_title("Layer path")
 
-        # Plot the data
-        ax.imshow(data, cmap='gray')
+        ax_avglayer = self.canvas.figure.add_subplot(gs[1, :2])
+        ax_avglayer.set_title("Layer averages")
+        ax_avglayer.axvline(x=layer, color="red", lw=0.5)
 
-        # Draw the canvas
+        ax_coslayer = self.canvas.figure.add_subplot(gs[1, 2:])
+        ax_coslayer.set_title("Layer cosine similarities")
+
+        ax_distcur = self.canvas.figure.add_subplot(gs[2, :2])
+        ax_distcur.set_title("Distribution for current layer")
+
+        ax_coscur = self.canvas.figure.add_subplot(gs[2, 2:])
+        ax_coscur.set_title("Cosine similarities for current layer")
+
+        self.canvas.figure.tight_layout()
         self.canvas.draw()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
+    widget = MainWindow()
+    widget.show()
     sys.exit(app.exec_())
