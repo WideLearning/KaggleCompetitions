@@ -1,9 +1,8 @@
-import matplotlib.pyplot as plt
 import neptune.new as neptune
 import numpy as np
-import seaborn as sns
 import torch
 import torch.nn.functional as F
+from scipy.integrate import quad
 
 
 class QuantileDistribution:
@@ -18,11 +17,9 @@ class QuantileDistribution:
         return (self.q.sum() - (self.q[0] + self.q[-1]) / 2) / self.k
 
     def integrate(self, f):
-        from scipy.integrate import quad
-
-        def segment(l, r): return quad(f, l, r)[
-            0] / (self.k * max(r - l, 1e-18))
-        return sum(segment(l, r) for l, r in zip(self.q, self.q[1:]))
+        def segment(lef, rig):
+            return quad(f, lef, rig)[0] / (self.k * max(rig - lef, 1e-18))
+        return sum(segment(lef, rig) for lef, rig in zip(self.q, self.q[1:]))
 
     def sample(self, size):
         segments = np.random.randint(0, self.k, size)
@@ -33,11 +30,11 @@ class QuantileDistribution:
 class Tracker:
     def __init__(self, project, api_token):
         self.run = neptune.init_run(project, api_token)
-        self.last = dict()
-        self.outputs = dict()
+        self.last = {}
+        self.outputs = {}
 
     def _activation_hook(self, name):
-        def hook(model, input, output):
+        def hook(_model, _input, output):
             self.outputs[name] = output.detach()
         return hook
 
@@ -71,6 +68,6 @@ class Tracker:
             self.statistics(f"{i}_{name}:gradient",
                             param.grad, with_cosine=True)
 
-        for i, (name, module) in enumerate(model.named_modules()):
+        for i, (name, _module) in enumerate(model.named_modules()):
             self.tensor(f"{i}_{name}:output",
                         self.outputs.get(name, torch.zeros(1)))
