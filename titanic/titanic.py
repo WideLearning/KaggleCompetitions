@@ -1,3 +1,5 @@
+import math
+
 import matplotlib as plt
 import numpy as np
 import pandas as pd
@@ -11,6 +13,7 @@ from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
 from sklearn.metrics import f1_score
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from tqdm import tqdm
 
 from tracker import Tracker
 
@@ -70,11 +73,22 @@ y_train = to_torch_1d(y_train)
 y_val = to_torch_1d(y_val)
 
 
-
 network = nn.Sequential(
-    nn.Linear(X_train.shape[1], 200),
-    nn.PReLU(),
-    nn.Linear(200, 1),
+    nn.Linear(X_train.shape[1], 200, bias=True),
+    nn.Tanh(),
+    nn.Linear(200, 200, bias=False),
+    nn.Tanh(),
+    nn.Linear(200, 200, bias=False),
+    nn.Tanh(),
+    nn.Linear(200, 200, bias=False),
+    nn.Tanh(),
+    nn.Linear(200, 200, bias=False),
+    nn.Tanh(),
+    nn.Linear(200, 200, bias=False),
+    nn.Tanh(),
+    nn.Linear(200, 200, bias=False),
+    nn.Tanh(),
+    nn.Linear(200, 1, bias=False),
     nn.Sigmoid()
 )
 
@@ -84,22 +98,28 @@ tracker.set_hooks(network)
 
 optimizer = torch.optim.Adam(network.parameters(), lr=2e-3)
 
-epochs_nums = 10
+epochs_num = 1000
+logging_exp = 1.5
+logging_points = set(int(logging_exp ** i)
+                     for i in range(int(math.log(epochs_num, logging_exp))))
 
-for i in range(epochs_nums):
+for i in tqdm(range(epochs_num)):
+    with torch.no_grad():
+        y_pred = network(X_val)
+        val_loss = F.binary_cross_entropy(y_pred, y_val)
+
     y_pred = network(X_train)
-    loss = F.binary_cross_entropy(y_pred, y_train)
-    tracker.scalar("train/loss", loss.item())
+    train_loss = F.binary_cross_entropy(y_pred, y_train)
 
     optimizer.zero_grad()
-    loss.backward()
+    train_loss.backward()
     optimizer.step()
 
-    tracker.model(network)
-
-    y_pred = network(X_val)
-    loss = F.binary_cross_entropy(y_pred, y_val)
-    tracker.scalar("val/loss", loss.item())
+    if i in logging_points:
+        print(f"{i}: {train_loss.item():.3f} {val_loss.item():.3f}")
+        tracker.model(network)
+        tracker.scalar("train/loss", train_loss.item())
+        tracker.scalar("val/loss", val_loss.item())
 
 answer = network(X_test).detach().numpy().reshape(
     X_test.shape[0]).round().astype(int)

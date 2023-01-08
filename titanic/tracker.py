@@ -1,30 +1,15 @@
 import neptune.new as neptune
-import numpy as np
 import torch
 import torch.nn.functional as F
-from scipy.integrate import quad
+
+from distributions import QuantileDistribution
 
 
-class QuantileDistribution:
-    def __init__(self, points, k=100):
-        assert points.ndim == 1
-        assert points.size > 0 and k > 0
-        points = points.astype(np.float32)
-        self.k = k
-        self.q = np.quantile(points, np.linspace(0, 1, k + 1), method="linear")
-
-    def mean(self):
-        return (self.q.sum() - (self.q[0] + self.q[-1]) / 2) / self.k
-
-    def integrate(self, f):
-        def segment(lef, rig):
-            return quad(f, lef, rig)[0] / (self.k * max(rig - lef, 1e-18))
-        return sum(segment(lef, rig) for lef, rig in zip(self.q, self.q[1:]))
-
-    def sample(self, size):
-        segments = np.random.randint(0, self.k, size)
-        uniforms = np.random.uniform(0, 1, size)
-        return self.q[segments] + uniforms * (self.q[segments + 1] - self.q[segments])
+def tensor_hash(tensor):
+    vector = tensor.flatten()
+    x = vector.sum()
+    y = vector[0::2].sum() - vector[1::2].sum()
+    return x, y
 
 
 class Tracker:
@@ -50,23 +35,25 @@ class Tracker:
         for i in range(k + 1):
             self.scalar(f"{name}%{i/k:.3f}", qd.q[i])
 
-    def statistics(self, name, param, with_cosine=False):
+    def statistics(self, name, param, with_xy=False):
         value = param.detach().clone()
         eps = 1e-8
         previous = self.last.get(name, value)
         self.tensor(f"{name}:log", (value.abs() + eps).log())
-        if with_cosine:
-            self.tensor(f"{name}:cosine_sim",
-                        F.cosine_similarity(value, previous, dim=0))
+        self.scalar(f"{name}:cosine_sim",
+                    F.cosine_similarity(value.flatten(), previous.flatten(), dim=0).item())
+        if with_xy:
+            x, y = tensor_hash(value)
+            self.scalar(f"{name}:x", x)
+            self.scalar(f"{name}:y", y)
         self.last[name] = value.detach()
 
     def model(self, model):
         for i, (name, param) in enumerate(model.named_parameters()):
             self.statistics(f"{i}_{name}:dweight", param -
                             self.last.get(f"{i}_{name}:weight", param))
-            self.statistics(f"{i}_{name}:weight", param)
-            self.statistics(f"{i}_{name}:gradient",
-                            param.grad, with_cosine=True)
+            self.statistics(f"{i}_{name}:weight", param, with_xy=True)
+            self.statistics(f"{i}_{name}:gradient", param.grad)
 
         for i, (name, _module) in enumerate(model.named_modules()):
             self.tensor(f"{i}_{name}:output",
