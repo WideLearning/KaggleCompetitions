@@ -1,21 +1,19 @@
+# pylint: disable=unused-import
 import math
 
-import matplotlib as plt
 import numpy as np
 import pandas as pd
 import sklearn.model_selection
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as opt
-from sklearn import preprocessing
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
-from sklearn.metrics import f1_score
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import StandardScaler
+from torch import nn
 from tqdm import tqdm
 
-from tracker import Tracker
+from tracker import FileTracker
 
 
 def write_answer(answer, filename):
@@ -92,14 +90,12 @@ network = nn.Sequential(
     nn.Sigmoid()
 )
 
-tracker = Tracker(project="WideLearning/Titanic",
-                  api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI5NTIzY2UxZC1jMjI5LTRlYTQtYjQ0Yi1kM2JhMGU1NDllYTIifQ==")
-tracker.set_hooks(network)
+tracker = FileTracker(k=5, filename="save.p")
 
-optimizer = torch.optim.Adam(network.parameters(), lr=2e-3)
+optimizer = opt.Adam(network.parameters(), lr=3e-5)
 
-epochs_num = 1000
-logging_exp = 1.5
+epochs_num = 100
+logging_exp = 1.001
 logging_points = set(int(logging_exp ** i)
                      for i in range(int(math.log(epochs_num, logging_exp))))
 
@@ -120,7 +116,8 @@ for i in tqdm(range(epochs_num)):
         tracker.model(network)
         tracker.scalar("train/loss", train_loss.item())
         tracker.scalar("val/loss", val_loss.item())
+tracker.dump()
 
-answer = network(X_test).detach().numpy().reshape(
-    X_test.shape[0]).round().astype(int)
-write_answer(answer, "submission.csv")
+# answer = network(X_test).detach().numpy().reshape(
+#     X_test.shape[0]).round().astype(int)
+# write_answer(answer, "submission.csv")

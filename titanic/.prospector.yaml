@@ -1,0 +1,4 @@
+pyflakes:
+  disable:
+    - F401
+    - F841

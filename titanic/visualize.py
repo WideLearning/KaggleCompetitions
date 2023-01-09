@@ -1,10 +1,6 @@
-import re
 import sys
-from functools import cache
 
-import neptune.new as neptune
 import numpy as np
-import torch
 from matplotlib.backends.backend_qt5agg import (FigureCanvas,
                                                 NavigationToolbar2QT)
 from matplotlib.figure import Figure
@@ -12,63 +8,14 @@ from matplotlib.gridspec import GridSpec
 from PyQt5.QtWidgets import (QApplication, QHBoxLayout, QRadioButton, QSpinBox,
                              QVBoxLayout, QWidget)
 
+from loader import FileLoader
 
-class Loader:
-    def __init__(self, project, api_token, run, ):
-        self.data = neptune.init_run(
-            project,
-            api_token,
-            run, mode="read-only"
-        ).get_structure()
-
-        self.series = sorted([name for name, series in self.data.items()
-                              if not isinstance(series, dict)])
-
-    @cache
-    def get(self, name):
-        path = name.split("/")
-        node = self.data
-        for elem in path:
-            node = node[elem]
-        return node.fetch_values()["value"].to_numpy()
-
-    @cache
-    def regex(self, regex):
-        for name in self.series:
-            if not re.fullmatch(regex, name):
-                continue
-            return self.get(name)
-
-    @cache
-    def distribution(self, regex, epoch):
-        result = []
-        for name in self.series:
-            if not re.fullmatch(regex, name):
-                continue
-            value = self.get(name)
-            if epoch not in range(len(value)):
-                continue
-            result.append(value[epoch])
-        return np.array(result)
-
-    @cache
-    def layer_distributions(self, regex, epoch):
-        result = []
-        layer = 0
-        while True:
-            d = self.distribution(f"{layer}_.*:{regex}.*", epoch)
-            if len(d):
-                result.append(d)
-                layer += 1
-            else:
-                return result
-
-
-loader = Loader(project="WideLearning/Titanic",
-                api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLC" +
-                "JhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI5NT" +
-                "IzY2UxZC1jMjI5LTRlYTQtYjQ0Yi1kM2JhMGU1NDllYTIifQ==",
-                run="TIT-28")
+# loader = NeptuneLoader(project="WideLearning/Titanic",
+#                        api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLC" +
+#                        "JhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI5NT" +
+#                        "IzY2UxZC1jMjI5LTRlYTQtYjQ0Yi1kM2JhMGU1NDllYTIifQ==",
+#                        run="TIT-28")
+loader = FileLoader(filename="save.p")
 
 
 def squash(x, y):
@@ -130,7 +77,7 @@ class MainWindow(QWidget):
 
     def resizeEvent(self, event):
         self.update_plot()
-        return super().resizeEvent()
+        return super().resizeEvent(event)
 
     def type_to_plot(self):
         if self.weight_button.isChecked():
@@ -162,12 +109,12 @@ class MainWindow(QWidget):
         ax_loss.plot(train_loss, "--", color="blue", lw=1)
         ax_loss.axvline(x=epoch, color="red", lw=0.5)
 
-        ax_avglayer = self.canvas.figure.add_subplot(gs[0, 2:4])
-        ax_avglayer.set_title("Layer distributions")
-        ax_avglayer.violinplot(dists, positions=range(n_params), showextrema=False, quantiles=[
-                               [0.1, 0.5, 0.9] for _ in range(n_params)])
-        ax_avglayer.axvline(x=layer, color="red", lw=0.5)
-        ax_avglayer.set_ylim(-10, 2)
+        # ax_avglayer = self.canvas.figure.add_subplot(gs[0, 2:4])
+        # ax_avglayer.set_title("Layer distributions")
+        # ax_avglayer.violinplot(dists, positions=range(n_params), showextrema=False, quantiles=[
+        #                        [0.1, 0.5, 0.9] for _ in range(n_params)])
+        # ax_avglayer.axvline(x=layer, color="red", lw=0.5)
+        # ax_avglayer.set_ylim(-10, 2)
 
         ax_coslayer = self.canvas.figure.add_subplot(gs[0, 4:6])
         ax_coslayer.set_title("Layer cosine similarities")
@@ -182,7 +129,8 @@ class MainWindow(QWidget):
             else:
                 ax_coslayer.plot(c, "-", lw=0.1, color="blue")
 
-        def plot_path(ax, f, r):
+        def plot_path(ax, title, f, r):
+            ax.set_title(title)
             ax.set_xlim(-r, r)
             ax.set_ylim(-r, r)
             for i in range(n_params):
@@ -190,19 +138,16 @@ class MainWindow(QWidget):
                 y = loader.regex(f"{i}_.*:y")
                 x, y = f(x, y)
                 if i == layer:
-                    ax.plot(x, y, "o-", lw=0.1, ms=1, color="blue")
+                    ax.plot(x, y, "o-", lw=0.1, ms=1, color="red")
                     ax.plot([x[epoch]], [y[epoch]], "o", ms=4, color="red")
                 else:
                     ax.plot(x, y, "o-", lw=0.1, ms=1, color="blue")
                     ax.plot([x[epoch]], [y[epoch]], "o", ms=4, color="blue")
 
-        ax_scaledpath = self.canvas.figure.add_subplot(gs[1:, 0:3])
-        ax_scaledpath.set_title("Scaled layer paths")
-        plot_path(ax_scaledpath, f=scale, r=5)
-
-        ax_squashedpath = self.canvas.figure.add_subplot(gs[1:, 3:6])
-        ax_squashedpath.set_title("Squashed layer paths")
-        plot_path(ax_squashedpath, f=squash, r=25)
+        plot_path(self.canvas.figure.add_subplot(gs[1:, 0:3]),
+                  "Scaled layer paths", f=scale, r=5)
+        # plot_path(self.canvas.figure.add_subplot(gs[1:, 3:6]),
+        #           "Squashed layer paths", f=squash, r=25)
 
         self.canvas.figure.tight_layout()
         self.canvas.draw()
