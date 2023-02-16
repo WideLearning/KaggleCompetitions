@@ -50,7 +50,6 @@ def read_input():
 
 
 X_train, y_train, X_test = read_input()
-
 X_train, X_val, y_train, y_val = sklearn.model_selection.train_test_split(
     X_train, y_train, test_size=0.2)
 
@@ -92,10 +91,10 @@ network = nn.Sequential(
 
 tracker = FileTracker(k=5, filename="save.p")
 
-optimizer = opt.Adam(network.parameters(), lr=3e-5)
+optimizer = opt.AdamW(network.parameters(), lr=1e-3, weight_decay=100)
 
 epochs_num = 100
-logging_exp = 1.001
+logging_exp = 1.1
 logging_points = set(int(logging_exp ** i)
                      for i in range(int(math.log(epochs_num, logging_exp))))
 

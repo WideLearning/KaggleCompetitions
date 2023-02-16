@@ -50,6 +50,7 @@ class TrackerBase:
 
     def model(self, model):
         for i, (name, param) in enumerate(model.named_parameters()):
+            print(i, name, param.shape)
             self.statistics(f"{i}_{name}:dweight", param -
                             self.last.get(f"{i}_{name}:weight", param))
             self.statistics(f"{i}_{name}:weight", param, with_xy=True)

@@ -109,12 +109,12 @@ class MainWindow(QWidget):
         ax_loss.plot(train_loss, "--", color="blue", lw=1)
         ax_loss.axvline(x=epoch, color="red", lw=0.5)
 
-        # ax_avglayer = self.canvas.figure.add_subplot(gs[0, 2:4])
-        # ax_avglayer.set_title("Layer distributions")
-        # ax_avglayer.violinplot(dists, positions=range(n_params), showextrema=False, quantiles=[
-        #                        [0.1, 0.5, 0.9] for _ in range(n_params)])
-        # ax_avglayer.axvline(x=layer, color="red", lw=0.5)
-        # ax_avglayer.set_ylim(-10, 2)
+        ax_avglayer = self.canvas.figure.add_subplot(gs[0, 2:4])
+        ax_avglayer.set_title("Layer distributions")
+        ax_avglayer.violinplot(dists, positions=range(n_params), showextrema=False, quantiles=[
+                               [0.1, 0.5, 0.9] for _ in range(n_params)])
+        ax_avglayer.axvline(x=layer, color="red", lw=0.5)
+        ax_avglayer.set_ylim(-10, 2)
 
         ax_coslayer = self.canvas.figure.add_subplot(gs[0, 4:6])
         ax_coslayer.set_title("Layer cosine similarities")
@@ -146,8 +146,8 @@ class MainWindow(QWidget):
 
         plot_path(self.canvas.figure.add_subplot(gs[1:, 0:3]),
                   "Scaled layer paths", f=scale, r=5)
-        # plot_path(self.canvas.figure.add_subplot(gs[1:, 3:6]),
-        #           "Squashed layer paths", f=squash, r=25)
+        plot_path(self.canvas.figure.add_subplot(gs[1:, 3:6]),
+                  "Squashed layer paths", f=squash, r=25)
 
         self.canvas.figure.tight_layout()
         self.canvas.draw()
