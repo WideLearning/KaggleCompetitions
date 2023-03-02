@@ -8,6 +8,9 @@ from tqdm import tqdm
 from sklearn.preprocessing import RobustScaler, FunctionTransformer
 from sklearn.pipeline import Pipeline
 from typing import Callable
+from itertools import islice
+from sklearn.experimental import enable_iterative_imputer
+from sklearn.impute import SimpleImputer
 
 """
 TODO:
@@ -45,27 +48,32 @@ class TimeSeriesBuilder:
         Puts all features into one matrix.
 
         Returns:
-            X: np.array, float[n_series, n_timesteps = T_AVAILABLE, n_features]
+            X: np.array, float[n_timesteps, n_features]
                 Features. Not cleaned, imputed or normalized.
 
         """
-        X = np.stack(
-            [self.features[name] for name in FEATURE_NAMES if name != TARGET_NAME]
+        X = np.transpose(
+            np.stack(
+                [self.features[name] for name in FEATURE_NAMES if name != TARGET_NAME]
+            )
         )
-        for name in FEATURE_NAMES:
-            for step in range(len(self.features[name])):
-                if np.isnan(self.features[name][step]):
-                    print(f"{name}_{step} is missing")
+        assert X.ndim == 2
+        # for name in FEATURE_NAMES:
+        #     for step in range(len(self.features[name])):
+        #         if np.isnan(self.features[name][step]):
+        #             print(f"{name}_{step} is missing")
         return X
 
     def build_y(self) -> np.array:
         """
         Returns:
-            y: np.array, float[n_series, n_timesteps = T_AVAILABLE]
+            y: np.array, float[n_timesteps = T_AVAILABLE]
                 Targets.
         """
         y = self.features[TARGET_NAME]
-        assert not np.isnan(y).any()
+        # assert not np.isnan(y).any()
+        assert y.ndim == 1
+        return y
 
 
 def month_number(date: str) -> int:
@@ -103,11 +111,18 @@ def merge_census(
     timestep: int,
     year: int,
 ):
+    """
+    Takes the census_df row for given cfips, iterates over features that match timestep by year,
+    puts values of these features into feature_dict[...][timestep].
+    """
     census_lag = 2
     for name, value in census_df.loc[cfips].to_dict().items():
         feature_name, feature_year = name[:-5], int(name[-4:])
         if feature_year == year - census_lag:
             feature_dict[feature_name][timestep] = value
+    # for feature_name in feature_dict.keys():
+    #     if np.isnan(feature_dict[feature_name][timestep]):
+    #         print(f"Missing {feature_name} for cfips={cfips}, timestep={timestep}, year={year}")
 
 
 def build_train(
@@ -129,6 +144,23 @@ def build_train(
     return X_train, y_train
 
 
+class Reshaper:
+    """
+    Sklearn-style class to reshape data in a pipeline.
+    """
+
+    def __init__(self, shape: list[int]):
+        self.shape = shape
+
+    def fit(self, X, y=None):
+        print("fit", X.shape, self.shape)
+        return self
+
+    def transform(self, X):
+        print("transform", X.shape, self.shape)
+        return X.reshape(*self.shape)
+
+
 def clean_train(X: np.array, y: np.array) -> tuple[np.array, np.array, Pipeline]:
     """
     Cleans and normalizes the data, and saves the pipeline to do the same with test.
@@ -143,9 +175,12 @@ def clean_train(X: np.array, y: np.array) -> tuple[np.array, np.array, Pipeline]
     """
     n_series, n_timesteps, n_features = X.shape
     pipeline = Pipeline(
-        FunctionTransformer(lambda arg: arg.reshape(-1, n_features)),
-        RobustScaler(),
-        FunctionTransformer(lambda arg: arg.reshape(n_series, -1, n_features)),
+        [
+            ("A", Reshaper([-1, n_features])),
+            ("B", RobustScaler()),
+            ("C", SimpleImputer()),
+            ("D", Reshaper([n_series, -1, n_features])),
+        ]
     )
     X = pipeline.fit_transform(X)
     assert np.isnan(X).sum() == 0
@@ -165,13 +200,14 @@ def build_test(sample_df: pd.DataFrame, census_df: pd.DataFrame) -> np.array:
     for train_row in tqdm(sample_df.iterrows(), total=len(sample_df)):
         row_id, density = train_row[1]
         cfips, date = row_id.split("_")
-        timestep, year = month_number(date), int(date[:4])
+        cfips = int(cfips)
+        timestep, year = month_number(date) - T_AVAILABLE, int(date[:4])
         feature_dict = test_builder[cfips].features
         # feature_dict["active"][timestep] = active
         feature_dict["density"][timestep] = density
         merge_census(census_df, cfips, feature_dict, timestep, year)
 
-    X_test = np.stack([series.build_X() for series in test_builder.items()])
+    X_test = np.stack([series.build_X() for series in test_builder.values()])
     return X_test
 
 
@@ -188,8 +224,9 @@ def build_dataset() -> tuple[torch.tensor, torch.tensor]:
     census_df = pd.read_csv("census_starter.csv").set_index("cfips")
     X_train, y_train = build_train(train_df, census_df)
     X_train, y_train, pipeline = clean_train(X_train, y_train)
-    X_test = build_test(census_df)
-    X_test = pipeline(X_test)
+    sample_df = pd.read_csv("sample_submission.csv")
+    X_test = build_test(sample_df, census_df)
+    X_test = pipeline.transform(X_test)
 
     f32 = lambda x: torch.tensor(x, dtype=torch.float32)
     return f32(X_train), f32(y_train), f32(X_test)
