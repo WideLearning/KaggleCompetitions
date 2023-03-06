@@ -10,7 +10,7 @@ from sklearn.impute import SimpleImputer
 
 """
 TODO:
-- Fix reading data from census
+- Add "active" feature for test data.
 - Try different data preprocessing
 - Try predicting active instead of microbusiness_density
 - More data from https://www.kaggle.com/competitions/godaddy-microbusiness-density-forecasting/discussion/372604

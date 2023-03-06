@@ -11,6 +11,12 @@ from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, RobustScaler
 from tqdm import tqdm
+from solve import noise, last_density
+
+"""
+TODO:
+- set up local validation
+"""
 
 N_SERIES, N_FEATURES = 3135, 5
 T_AVAILABLE, T_REVEALED, T_PREDICT = 41, 2, 6
@@ -33,6 +39,6 @@ def submission(data, name):
 
 X_test = torch.load("X_test.p")
 assert X_test.shape == (N_SERIES, T_PREDICT, N_FEATURES)
-y_test = torch.randn((N_SERIES, T_PREDICT))
+y_test = last_density(X_train, y_train, X_test)
 
-submission(y_test, "submissions/revealed_and_noise.csv")
+submission(y_test, "submissions/last_density.csv")
