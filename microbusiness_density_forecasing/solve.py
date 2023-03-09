@@ -41,6 +41,7 @@ def last_density(
             y_test[i, j] = y_train[i, -1]
     return y_test
 
+
 def last_density(
     X_train: torch.Tensor, y_train: torch.Tensor, X_test: torch.Tensor
 ) -> torch.Tensor:
@@ -56,6 +57,7 @@ def last_density(
             y_test[i, j] = y_train[i, -1]
     return y_test
 
+
 def last_density_corrected(
     X_train: torch.Tensor, y_train: torch.Tensor, X_test: torch.Tensor
 ) -> torch.Tensor:
@@ -68,6 +70,6 @@ def last_density_corrected(
     y_test = torch.empty((N_SERIES, T_PREDICT))
     for i in range(N_SERIES):
         for j in range(T_PREDICT):
-            y_test[i, j] = y_train[i, -1]
+            print(X_train[i, -1, 0], X_test[i, j, 0])
+            y_test[i, j] = y_train[i, -1] * (X_train[i, -1, 0] / X_test[i, j, 0])
     return y_test
-

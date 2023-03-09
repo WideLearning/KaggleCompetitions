@@ -166,7 +166,7 @@ class Reshaper:
 
 def clean_train(X: np.array, y: np.array) -> tuple[np.array, np.array, Pipeline]:
     """
-    Cleans and normalizes the data, and saves the pipeline to do the same with test.
+    Cleans the data, and saves the pipeline to do the same with test.
 
     Returns:
         X: torch.tensor, float32[n_series, n_timesteps = T_AVAILABLE, n_features]
@@ -180,9 +180,8 @@ def clean_train(X: np.array, y: np.array) -> tuple[np.array, np.array, Pipeline]
     pipeline = Pipeline(
         [
             ("A", Reshaper([-1, n_features])),
-            ("B", RobustScaler()),
-            ("C", SimpleImputer()),
-            ("D", Reshaper([n_series, -1, n_features])),
+            ("B", SimpleImputer()),
+            ("C", Reshaper([n_series, -1, n_features])),
         ]
     )
     X = pipeline.fit_transform(X)
@@ -223,7 +222,7 @@ def build_dataset() -> tuple[torch.tensor, torch.tensor]:
     """
     Returns:
         X: torch.tensor, float32[n_series, n_timesteps = T_AVAILABLE, n_features]
-            Features. Already sanitized, encoded properly into floats and normalized.
+            Features. Already sanitized and encoded properly into floats.
         y: torch.tensor, float32[n_series, n_timesteps = T_AVAILABLE]
             Targets.
     """

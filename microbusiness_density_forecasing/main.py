@@ -1,17 +1,8 @@
-from collections import defaultdict
-from itertools import islice
-from typing import Callable
-
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 import torch
-from sklearn.experimental import enable_iterative_imputer
-from sklearn.impute import SimpleImputer
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import FunctionTransformer, RobustScaler
-from tqdm import tqdm
-from solve import noise, last_density
+
+from solve import last_density_corrected
 
 """
 TODO:
@@ -20,7 +11,7 @@ TODO:
 - check https://www.kaggle.com/competitions/godaddy-microbusiness-density-forecasting/discussion/375802
 """
 
-N_SERIES, N_FEATURES = 3135, 5
+N_SERIES, N_FEATURES = 3135, 6
 T_AVAILABLE, T_REVEALED, T_PREDICT = 41, 2, 6
 
 X_train = torch.load("X_train.p")
@@ -41,6 +32,6 @@ def submission(data, name):
 
 X_test = torch.load("X_test.p")
 assert X_test.shape == (N_SERIES, T_PREDICT, N_FEATURES)
-y_test = last_density(X_train, y_train, X_test)
+y_test = last_density_corrected(X_train, y_train, X_test)
 
-submission(y_test, "submissions/last_density.csv")
+submission(y_test, "submissions/last_density_corrected.csv")
