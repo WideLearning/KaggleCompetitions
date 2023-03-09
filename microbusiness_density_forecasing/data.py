@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import torch
 from tqdm import tqdm
-from sklearn.preprocessing import RobustScaler
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 import os
@@ -22,12 +21,12 @@ LAG = 2
 FEATURE_NAMES, TARGET_NAME = [
     # "active",
     "population",
-    "density",
     "pct_bb",
     "pct_college",
     "pct_foreign_born",
     "pct_it_workers",
     "median_hh_inc",
+    "density",
 ], "density"
 
 

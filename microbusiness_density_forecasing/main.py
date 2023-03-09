@@ -1,8 +1,7 @@
-import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 
-from solve import last_density_corrected
+from solve import *
 
 """
 TODO:
@@ -32,6 +31,5 @@ def submission(data, name):
 
 X_test = torch.load("X_test.p")
 assert X_test.shape == (N_SERIES, T_PREDICT, N_FEATURES)
-y_test = last_density_corrected(X_train, y_train, X_test)
-
-submission(y_test, "submissions/last_density_corrected.csv")
+y_test = row_linear_extra(X_train, y_train, X_test)
+submission(y_test, "submissions/row_linear_extra.csv")
