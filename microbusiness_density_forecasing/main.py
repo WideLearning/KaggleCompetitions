@@ -16,6 +16,8 @@ from solve import noise, last_density
 """
 TODO:
 - set up local validation
+
+- check https://www.kaggle.com/competitions/godaddy-microbusiness-density-forecasting/discussion/375802
 """
 
 N_SERIES, N_FEATURES = 3135, 5
