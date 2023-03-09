@@ -55,3 +55,19 @@ def last_density(
         for j in range(T_PREDICT):
             y_test[i, j] = y_train[i, -1]
     return y_test
+
+def last_density_corrected(
+    X_train: torch.Tensor, y_train: torch.Tensor, X_test: torch.Tensor
+) -> torch.Tensor:
+    N_SERIES, N_FEATURES = X_train.size(0), X_train.size(2)
+    T_AVAILABLE, T_PREDICT = X_train.size(1), X_test.size(1)
+    assert X_train.shape == (N_SERIES, T_AVAILABLE, N_FEATURES)
+    assert y_train.shape == (N_SERIES, T_AVAILABLE)
+    assert X_test.shape == (N_SERIES, T_PREDICT, N_FEATURES)
+
+    y_test = torch.empty((N_SERIES, T_PREDICT))
+    for i in range(N_SERIES):
+        for j in range(T_PREDICT):
+            y_test[i, j] = y_train[i, -1]
+    return y_test
+

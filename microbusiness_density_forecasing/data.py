@@ -7,18 +7,21 @@ from tqdm import tqdm
 from sklearn.preprocessing import RobustScaler
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
+import os
 
 """
 TODO:
-- Add "active" feature for test data.
+- Add "population" feature for test data.
 - Try different data preprocessing
 - Try predicting active instead of microbusiness_density
 - More data from https://www.kaggle.com/competitions/godaddy-microbusiness-density-forecasting/discussion/372604
 """
 
 T_AVAILABLE, T_PREDICT = 41, 6
+LAG = 2
 FEATURE_NAMES, TARGET_NAME = [
     # "active",
+    "population",
     "density",
     "pct_bb",
     "pct_college",
@@ -111,10 +114,9 @@ def merge_census(
     Takes the census_df row for given cfips, iterates over features that match timestep by year,
     puts values of these features into feature_dict[...][timestep].
     """
-    census_lag = 2
     for name, value in census_df.loc[cfips].to_dict().items():
         feature_name, feature_year = name[:-5], int(name[-4:])
-        if feature_year == year - census_lag:
+        if feature_year == year - LAG:
             feature_dict[feature_name][timestep] = value
     # for feature_name in feature_dict.keys():
     #     if np.isnan(feature_dict[feature_name][timestep]):
@@ -122,7 +124,9 @@ def merge_census(
 
 
 def build_train(
-    train_df: pd.DataFrame, census_df: pd.DataFrame
+    train_df: pd.DataFrame,
+    census_df: pd.DataFrame,
+    population_dict: dict[tuple[int, int], int],
 ) -> tuple[np.array, np.array]:
     train_builder = defaultdict(lambda: TimeSeriesBuilder(n_timesteps=T_AVAILABLE))
 
@@ -131,6 +135,9 @@ def build_train(
         timestep, year = month_number(date), int(date[:4])
         feature_dict = train_builder[cfips].features
         # feature_dict["active"][timestep] = active
+        population = population_dict[(cfips, year - LAG)]
+        feature_dict["population"][timestep] = population
+        assert abs(density - active * 100 / population) < 1
         feature_dict["density"][timestep] = density
         merge_census(census_df, cfips, feature_dict, timestep, year)
 
@@ -184,7 +191,11 @@ def clean_train(X: np.array, y: np.array) -> tuple[np.array, np.array, Pipeline]
     return X, y, pipeline
 
 
-def build_test(sample_df: pd.DataFrame, census_df: pd.DataFrame) -> np.array:
+def build_test(
+    sample_df: pd.DataFrame,
+    census_df: pd.DataFrame,
+    population_dict: dict[tuple[int, int], int],
+) -> np.array:
     """
     X_test should be in the same format as X_train,
     but starting from 1001_2023-01-01 (or 1001_2022-01-01) to 56045_2023-06-01.
@@ -199,7 +210,8 @@ def build_test(sample_df: pd.DataFrame, census_df: pd.DataFrame) -> np.array:
         cfips = int(cfips)
         timestep, year = month_number(date) - T_AVAILABLE, int(date[:4])
         feature_dict = test_builder[cfips].features
-        # feature_dict["active"][timestep] = active
+        population = population_dict[(cfips, year - LAG)]
+        feature_dict["population"][timestep] = population
         feature_dict["density"][timestep] = density
         merge_census(census_df, cfips, feature_dict, timestep, year)
 
@@ -218,10 +230,11 @@ def build_dataset() -> tuple[torch.tensor, torch.tensor]:
 
     train_df = pd.concat([pd.read_csv("train.csv"), pd.read_csv("revealed_test.csv")])
     census_df = pd.read_csv("census_starter.csv").set_index("cfips")
-    X_train, y_train = build_train(train_df, census_df)
+    population_dict = torch.load("population.p")
+    X_train, y_train = build_train(train_df, census_df, population_dict)
     X_train, y_train, pipeline = clean_train(X_train, y_train)
     sample_df = pd.read_csv("sample_submission.csv")
-    X_test = build_test(sample_df, census_df)
+    X_test = build_test(sample_df, census_df, population_dict)
     X_test = pipeline.transform(X_test)
 
     f32 = lambda x: torch.tensor(x, dtype=torch.float32)
@@ -236,3 +249,4 @@ print(X_test.shape)
 torch.save(X_train, "X_train.p")
 torch.save(y_train, "y_train.p")
 torch.save(X_test, "X_test.p")
+os.system("rm data.zip && zip data.zip X_test.p X_train.p y_train.p")
