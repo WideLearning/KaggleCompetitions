@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.impute import SimpleImputer
@@ -125,7 +126,48 @@ def row_linear(
             row = X_test[i, j].reshape(1, -1)
             p = estimator.predict(row).item()
             y_test[i, j] = p
-            # y_test[i, j] = y_train[i, -1] + (X_train[i, -1, 0] / X_test[i, j, 0]).log()
+
+    y_test = y_test.exp()
+    return y_test
+
+
+def row_linear_extra(
+    X_train: torch.Tensor, y_train: torch.Tensor, X_test: torch.Tensor
+) -> torch.Tensor:
+    N_SERIES, N_FEATURES = X_train.size(0), X_train.size(2)
+    T_AVAILABLE, T_PREDICT = X_train.size(1), X_test.size(1)
+    assert X_train.shape == (N_SERIES, T_AVAILABLE, N_FEATURES)
+    assert y_train.shape == (N_SERIES, T_AVAILABLE)
+    assert X_test.shape == (N_SERIES, T_PREDICT, N_FEATURES)
+
+    pipeline = Pipeline(
+        [
+            ("A", Reshaper([-1, N_FEATURES])),
+            ("B", RobustScaler()),
+            ("C", Reshaper([N_SERIES, -1, N_FEATURES])),
+        ]
+    )
+
+    X_train = pipeline.fit_transform(X_train)
+    X_test = pipeline.transform(X_test)
+    y_train = y_train.clamp_min(min=1).log().numpy()
+    y_shifted = np.roll(y_train, shift=1, axis=1)
+    X_train = np.concatenate((X_train, y_shifted[:, :, np.newaxis]), axis=-1)
+    estimator = Lasso(alpha=0.001).fit(
+        X_train.reshape(-1, N_FEATURES + 1), y_train.flatten()
+    )
+
+    print(estimator.coef_)
+
+    y_test = torch.empty((N_SERIES, T_PREDICT))
+    for i in range(N_SERIES):
+        for j in range(T_PREDICT):
+            prev = y_train[i, -1]  # or make auto-regressive
+            row = np.concatenate(
+                (X_test[i, j].reshape(1, -1), prev.reshape(1, 1)), axis=-1
+            )
+            p = estimator.predict(row).item()
+            y_test[i, j] = p
 
     y_test = y_test.exp()
     return y_test
