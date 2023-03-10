@@ -10,6 +10,7 @@ from solve import (
     row_linear_extra,
     row_linear_extra_log,
     row_linear_add,
+    row_mlp_add,
 )
 
 """
@@ -79,8 +80,8 @@ def validate(
 
 
 val_len, skip, r = 3, 1, T_AVAILABLE
-result = validate(row_linear_add, 0, r - val_len - skip, r - val_len, r, visualize=True)
+result = validate(row_mlp_add, 0, r - val_len - skip, r - val_len, r, visualize=True)
 print("SMAPE:", result)
 
-y_test = row_linear_add(X_train, y_train, X_test)
-submission(y_test, "submissions/row_linear_add.csv")
+# y_test = row_mlp_add(X_train, y_train, X_test)
+# submission(y_test, "submissions/row_mlp_add.csv")

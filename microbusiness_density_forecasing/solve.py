@@ -228,6 +228,9 @@ def row_linear_add(
     assert y_train.shape == (N_SERIES, T_AVAILABLE)
     assert X_test.shape == (N_SERIES, T_PREDICT, N_FEATURES)
 
+    pop_train = X_train[:, :, 0].clone()
+    pop_test = X_test[:, :, 0].clone()
+
     pipeline = Pipeline(
         [
             ("A", Reshaper([-1, N_FEATURES])),
@@ -246,12 +249,14 @@ def row_linear_add(
     estimator = Lasso(alpha=1e-9).fit(
         X_train.reshape(-1, 2 * N_FEATURES), y_delta.flatten()
     )
-    print(estimator.coef_)
 
     y_test = torch.empty((N_SERIES, T_PREDICT))
     for i in range(N_SERIES):
         for j in range(T_PREDICT):
-            prev = y_train[i, -1] if j == 0 else y_test[i, j - 1]
+            if j == 0:
+                prev = y_train[i, -1] + np.log(pop_train[i, -1] / pop_test[i, 0] + 1e-9)
+            else:
+                prev = y_test[i, j - 1]
             row = X_test[i, j].reshape(1, -1)
             p = (prev + estimator.predict(row)).item()
             y_test[i, j] = p
@@ -260,7 +265,7 @@ def row_linear_add(
     return y_test
 
 
-def row_mlp_extra(
+def row_mlp_add(
     X_train: torch.Tensor, y_train: torch.Tensor, X_test: torch.Tensor
 ) -> torch.Tensor:
     N_SERIES, N_FEATURES = X_train.size(0), X_train.size(2)
@@ -269,15 +274,14 @@ def row_mlp_extra(
     assert y_train.shape == (N_SERIES, T_AVAILABLE)
     assert X_test.shape == (N_SERIES, T_PREDICT, N_FEATURES)
 
-    pop_train = X_train[:, :, 0].copy()
-    pop_test = X_test[:, :, 0].copy()
+    pop_train = X_train[:, :, 0].clone()
+    pop_test = X_test[:, :, 0].clone()
 
     pipeline = Pipeline(
         [
             ("A", Reshaper([-1, N_FEATURES])),
             ("B", RobustScaler()),
-            ("C", LogFeatures()),
-            ("D", Reshaper([N_SERIES, -1, 2 * N_FEATURES])),
+            ("C", Reshaper([N_SERIES, -1, N_FEATURES])),
         ]
     )
 
@@ -287,26 +291,20 @@ def row_mlp_extra(
     y_shifted = np.roll(y_train, shift=1, axis=1)
     y_delta = y_train - y_shifted
 
-    # estimator = MLPRegressor(
-    #     hidden_layer_sizes=(10,),
-    #     activation="relu",
-    #     solver="adam",
-    #     alpha=0.01,
-    # ).fit(X_train.reshape(-1, 2 * N_FEATURES), y_delta.flatten())
-
-    estimator = Lasso(alpha=1e-9).fit(
-        X_train.reshape(-1, 2 * N_FEATURES), y_delta.flatten()
-    )
-    print(estimator.coef_)
+    estimator = MLPRegressor(
+        hidden_layer_sizes=(100, 100),
+        activation="relu",
+        solver="adam",
+        alpha=0.01,
+    ).fit(X_train.reshape(-1, N_FEATURES), y_delta.flatten())
 
     y_test = torch.empty((N_SERIES, T_PREDICT))
     for i in range(N_SERIES):
         for j in range(T_PREDICT):
-            prev = (
-                y_train[i, -1] * (pop_train[i, -1] / pop_test[i, 0])
-                if j == 0
-                else y_test[i, j - 1]
-            )
+            # if j == 0:
+            prev = y_train[i, -1] + np.log(pop_train[i, -1] / pop_test[i, 0] + 1e-9)
+            # else:
+            #     prev = y_test[i, j - 1]
             row = X_test[i, j].reshape(1, -1)
             p = (prev + estimator.predict(row)).item()
             y_test[i, j] = p
