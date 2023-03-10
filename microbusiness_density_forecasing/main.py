@@ -79,7 +79,7 @@ def validate(
     return smape(p, y)
 
 
-val_len, skip, r = 3, 1, T_AVAILABLE
+val_len, skip, r = 3, 2, T_AVAILABLE
 result = validate(row_mlp_add, 0, r - val_len - skip, r - val_len, r, visualize=True)
 print("SMAPE:", result)
 

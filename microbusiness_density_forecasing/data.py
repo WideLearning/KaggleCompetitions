@@ -98,7 +98,8 @@ def month_date(number: int) -> str:
     Inverse of month_number.
     """
     start_year, start_month = 2019, 8
-    year, month, day = start_year + number // 12, start_month + number % 2, 1
+    month = start_month + number
+    year, month, day = start_year + (month - 1) // 12, (month - 1) % 12 + 1, 1
     return f"{year}-{month}-{day}"
 
 
@@ -239,12 +240,13 @@ def build_dataset() -> tuple[torch.tensor, torch.tensor]:
     return f32(X_train), f32(y_train), f32(X_test)
 
 
-X_train, y_train, X_test = build_dataset()
-print(X_train.shape)
-print(y_train.shape)
-print(X_test.shape)
+if __name__ == "__main__":
+    X_train, y_train, X_test = build_dataset()
+    print(X_train.shape)
+    print(y_train.shape)
+    print(X_test.shape)
 
-torch.save(X_train, "X_train.p")
-torch.save(y_train, "y_train.p")
-torch.save(X_test, "X_test.p")
-os.system("rm data.zip && zip data.zip X_test.p X_train.p y_train.p")
+    torch.save(X_train, "X_train.p")
+    torch.save(y_train, "y_train.p")
+    torch.save(X_test, "X_test.p")
+    os.system("rm data.zip && zip data.zip X_test.p X_train.p y_train.p")
