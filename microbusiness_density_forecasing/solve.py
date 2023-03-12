@@ -122,7 +122,7 @@ def row_linear(
 
     X_train = pipeline.fit_transform(X_train)
     X_test = pipeline.transform(X_test)
-    y_train = y_train.clamp_min(min=1).log().flatten()
+    y_train = y_train.clamp_min(min=1e-18).log().flatten()
 
     estimator = Lasso(alpha=1.0).fit(X_train, y_train.numpy())
 
@@ -158,7 +158,7 @@ def row_linear_extra(
 
     X_train = pipeline.fit_transform(X_train)
     X_test = pipeline.transform(X_test)
-    y_train = y_train.clamp_min(min=1).log().numpy()
+    y_train = y_train.clamp_min(min=1e-18).log().numpy()
     y_shifted = np.roll(y_train, shift=1, axis=1)
     X_train = np.concatenate((X_train, y_shifted[:, :, np.newaxis]), axis=-1)
     estimator = Lasso(alpha=0.001).fit(
@@ -201,7 +201,7 @@ def row_linear_extra_log(
 
     X_train = pipeline.fit_transform(X_train)
     X_test = pipeline.transform(X_test)
-    y_train = y_train.clamp_min(min=1).log().numpy()
+    y_train = y_train.clamp_min(min=1e-18).log().numpy()
     y_shifted = np.roll(y_train, shift=1, axis=1)
     X_train = np.concatenate((X_train, y_shifted[:, :, np.newaxis]), axis=-1)
     estimator = Lasso(alpha=0.001).fit(
@@ -247,7 +247,7 @@ def row_linear_add(
 
     X_train = pipeline.fit_transform(X_train)
     X_test = pipeline.transform(X_test)
-    y_train = y_train.clamp_min(min=1).log().numpy()
+    y_train = y_train.clamp_min(min=1e-18).log().numpy()
     y_shifted = np.roll(y_train, shift=1, axis=1)
     y_delta = y_train - y_shifted
 
@@ -262,9 +262,12 @@ def row_linear_add(
                 prev = y_train[i, -1] + np.log(pop_train[i, -1] / pop_test[i, 0] + 1e-9)
             else:
                 prev = y_test[i, j - 1]
-            row = X_test[i, j].reshape(1, -1)
-            p = (prev + estimator.predict(row)).item()
-            y_test[i, j] = p
+            if pop_train[i, -1] > 25000:
+                row = X_test[i, j].reshape(1, -1)
+                p = (prev + estimator.predict(row) / 3).item()
+                y_test[i, j] = p
+            else:
+                y_test[i, j] = prev.item()
 
     y_test = y_test.exp()
     return y_test
@@ -292,27 +295,30 @@ def row_mlp_add(
 
     X_train = pipeline.fit_transform(X_train)
     X_test = pipeline.transform(X_test)
-    y_train = y_train.clamp_min(min=1).log().numpy()
+    y_train = y_train.clamp_min(min=1e-18).log().numpy()
     y_shifted = np.roll(y_train, shift=1, axis=1)
     y_delta = y_train - y_shifted
 
     estimator = MLPRegressor(
-        hidden_layer_sizes=(100, 100),
+        hidden_layer_sizes=(128, 16, 16, 16, 16),
         activation="relu",
         solver="adam",
-        alpha=0.01,
+        alpha=0.0001,
     ).fit(X_train.reshape(-1, N_FEATURES), y_delta.flatten())
 
     y_test = torch.empty((N_SERIES, T_PREDICT))
     for i in range(N_SERIES):
         for j in range(T_PREDICT):
-            # if j == 0:
-            prev = y_train[i, -1] + np.log(pop_train[i, -1] / pop_test[i, 0] + 1e-9)
-            # else:
-            #     prev = y_test[i, j - 1]
-            row = X_test[i, j].reshape(1, -1)
-            p = (prev + estimator.predict(row)).item()
-            y_test[i, j] = p
+            if j == 0:
+                prev = y_train[i, -1] + np.log(pop_train[i, -1] / pop_test[i, 0] + 1e-9)
+            else:
+                prev = y_test[i, j - 1]
+            if pop_train[i, -1] > 25000:
+                row = X_test[i, j].reshape(1, -1)
+                p = (prev + estimator.predict(row) / 3).item()
+                y_test[i, j] = p
+            else:
+                y_test[i, j] = prev.item()
 
     y_test = y_test.exp()
     return y_test
@@ -340,7 +346,7 @@ def arima(
 
     X_train = pipeline.fit_transform(X_train)
     X_test = pipeline.transform(X_test)
-    y_train = y_train.clamp_min(min=1).log().numpy()
+    y_train = y_train.clamp_min(min=1e-18).log().numpy()
 
     y_test = torch.empty((N_SERIES, T_PREDICT))
     for i in tqdm(range(N_SERIES)):
