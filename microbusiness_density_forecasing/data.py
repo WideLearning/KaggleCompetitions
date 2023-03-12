@@ -32,127 +32,41 @@ FEATURE_NAMES, TARGET_NAME = [
     "merchants_rank",
     "orders_rank",
     # from big_data
-    "hrhhid2",
-    "HUFINAL",
-    "OCCURNUM",
-    "HUINTTYP",
-    "HURESPLI",
-    "HUPRSCNT",
-    "HUBUS",
-    "HRMIS",
-    "HRMONTH",
-    "HRYEAR4",
-    "HRLONGLK",
-    "qstnum",
-    "gereg",
-    "gestfips",
-    "gediv",
-    "hehousut",
-    "hxhousut",
-    "hephoneo",
-    "hxphoneo",
-    "hxtelavl",
-    "hetelhhd",
-    "hxtelhhd",
-    "hrhtype",
-    "hrintsta",
-    "hrnumhou",
-    "hefaminc",
-    "hxfaminc",
-    "hwhhwgt",
-    "hwhhwtln",
-    "PULINENO",
-    "PUCHINHH",
-    "PUWK",
-    "PUSLFPRX",
-    "perrp",
-    "pxrrp",
-    "pxage",
-    "peafnow",
-    "pxafnow",
-    "pesex",
-    "pxsex",
-    "pemaritl",
-    "pxmaritl",
-    "pxrace1",
-    "pehspnon",
-    "pxhspnon",
-    "peeduca",
-    "pxeduca",
-    "peafever",
-    "pxafever",
-    "pxafwhn1",
-    "pxspouse",
-    "penatvty",
-    "pemntvty",
-    "pefntvty",
-    "pxdipged",
-    "pxhgcomp",
-    "pxcyc",
-    "pxpar1",
-    "pxpar2",
-    "pxpar1typ",
-    "pxpar2typ",
-    "prmarsta",
-    "ptdtrace",
-    "prpertyp",
-    "prfamnum",
-    "prfamtyp",
-    "prfamrel",
-    "prnmchld",
-    "prchld",
-    "prcitflg",
-    "prcitshp",
-    "prinuyer",
-    "prtage",
-    "prtfage",
-    "pxcohab",
-    "pemlr",
-    "pxhrftpt",
-    "pxmlr",
-    "prcivlf",
-    "premphrs",
-    "prempnot",
-    "prwksch",
-    "prwkstat",
-    "pxpdemp1",
-    "pxnmemp1",
-    "prioelg",
-    "prerelg",
-    "pedisear",
-    "pediseye",
-    "pedisrem",
-    "pedisphy",
-    "pedisdrs",
-    "pedisout",
-    "pxdisear",
-    "pxdiseye",
-    "pxdisrem",
-    "pxdisphy",
-    "pxdisdrs",
-    "pxdisout",
-    "prdisflg",
-    "pecert1",
-    "pxcert1",
-    "pxcert2",
-    "pxcert3",
-    "pwsswgt",
-    "pwlgwgt",
-    "pwvetwgt",
-    "pworwgt",
-    "pwfmwgt",
-    "pwcmpwgt",
-    "pthr",
-    "ptwk",
-    "ptot",
-    "hrhhid",
-    "gtcbsa",
-    "gtco",
-    "gtcbsast",
-    "gtcbsasz",
-    "gtcsa",
-    "gtmetsta",
-    "gtindvpc",
+    "big_0",
+    "big_1",
+    "big_2",
+    "big_3",
+    "big_4",
+    "big_5",
+    "big_6",
+    "big_7",
+    "big_8",
+    "big_9",
+    "big_10",
+    "big_11",
+    "big_12",
+    "big_13",
+    "big_14",
+    "big_15",
+    "big_16",
+    "big_17",
+    "big_18",
+    "big_19",
+    "big_20",
+    "big_21",
+    "big_22",
+    "big_23",
+    "big_24",
+    "big_25",
+    "big_26",
+    "big_27",
+    "big_28",
+    "big_29",
+    "big_30",
+    "big_31",
+    "big_32",
+    "big_33",
+    "big_34",
     # target
     "density",
 ], "density"
@@ -355,7 +269,7 @@ def clean_train(X: np.array, y: np.array) -> tuple[np.array, np.array, Pipeline]
     pipeline = Pipeline(
         [
             ("A", Reshaper([-1, n_features])),
-            ("B", SimpleImputer()),
+            ("B", SimpleImputer(keep_empty_features=True)),
             ("C", Reshaper([n_series, -1, n_features])),
         ]
     )
@@ -400,19 +314,29 @@ def build_test(
 
 def whiten(A, pipeline=None):
     from sklearn.decomposition import PCA
-    from sklearn.pipeline import Pipeline
     from sklearn.preprocessing import RobustScaler
+    from sklearn.pipeline import Pipeline
 
     shape = A.shape
     A = A.reshape(-1, A.shape[-1])
+
     if not pipeline:
         pipeline = Pipeline(
             [
                 ("scale", RobustScaler()),
-                ("pca", PCA(n_components=A.shape[-1])),
+                ("pca", PCA(n_components=min(A.shape[0], A.shape[1]))),
             ]
         ).fit(A)
-    return pipeline.transform(A).reshape(shape), pipeline
+    return torch.tensor(pipeline.transform(A).reshape(shape)), pipeline
+
+
+def build_big(other_features: dict, cfips: list):
+    arr = torch.load("big.p")
+    print(len(cfips), "cfips")
+    for c in tqdm(cfips):
+        for i in range(arr.shape[1]):
+            for t in range(arr.shape[0]):
+                other_features[(c, f"big_{i}", t)] = arr[t, i]
 
 
 def build_dataset() -> tuple[torch.tensor, torch.tensor]:
@@ -429,12 +353,16 @@ def build_dataset() -> tuple[torch.tensor, torch.tensor]:
     population_dict = torch.load("population.p")
     other_features = dict()
     build_VF_indcom(other_features)
-
+    build_big(other_features, census_df.index)
     X_train, y_train = build_train(train_df, census_df, population_dict, other_features)
+    print("train", X_train.shape, y_train.shape)
     X_train, y_train, pipeline = clean_train(X_train, y_train)
+    print("clean train", X_train.shape, y_train.shape)
     sample_df = pd.read_csv("sample_submission.csv")
     X_test = build_test(sample_df, census_df, population_dict, other_features)
+    print("test", X_test.shape)
     X_test = pipeline.transform(X_test)
+    print("clean test", X_test.shape)
 
     X_train[:, :, 1:], pipeline = whiten(X_train[:, :, 1:])
     X_test[:, :, 1:], pipeline = whiten(X_test[:, :, 1:])
