@@ -1,12 +1,12 @@
+import os
 from collections import defaultdict
 
 import numpy as np
 import pandas as pd
 import torch
-from tqdm import tqdm
-from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
-import os
+from sklearn.pipeline import Pipeline
+from tqdm import tqdm
 
 """
 TODO:
@@ -19,13 +19,18 @@ TODO:
 T_AVAILABLE, T_PREDICT = 41, 6
 LAG = 2
 FEATURE_NAMES, TARGET_NAME = [
-    # "active",
+    # from census_starter.csv
     "population",
     "pct_bb",
     "pct_college",
     "pct_foreign_born",
     "pct_it_workers",
     "median_hh_inc",
+    # from VF_indcom_counties_Q222.csv
+    "avg_traffic",
+    "gmv_rank",
+    "merchants_rank",
+    "orders_rank",
     "density",
 ], "density"
 
@@ -103,6 +108,29 @@ def month_date(number: int) -> str:
     return f"{year}-{month}-{day}"
 
 
+month_order = [
+    "jan",
+    "feb",
+    "mar",
+    "apr",
+    "may",
+    "jun",
+    "jul",
+    "aug",
+    "sep",
+    "oct",
+    "nov",
+    "dec",
+]
+
+
+def mmmyy_to_yyyymmdd(date):
+    assert len(date) == 5
+    month = month_order.index(date[:3]) + 1
+    year = int(date[3:])
+    return f"20{year}-{month:02}-01"
+
+
 def merge_census(
     census_df: pd.DataFrame,
     cfips: int,
@@ -123,10 +151,30 @@ def merge_census(
     #         print(f"Missing {feature_name} for cfips={cfips}, timestep={timestep}, year={year}")
 
 
+def build_VF_indcom(result: dict):
+    """
+    result: dict[(cfips, feature, timestep), float]
+    """
+    df = pd.read_csv("VF_indcom_counties_Q222.csv").set_index("cfips")
+    for col in df.columns:
+        parts = col.split("_")
+        name = "_".join(parts[:-1])
+        if name not in FEATURE_NAMES:
+            continue
+        t = month_number(mmmyy_to_yyyymmdd(parts[-1]))
+        for cfips, value in df[col].items():
+            if np.isnan(cfips) or np.isnan(value):
+                continue
+            if t < 12:
+                result[(int(cfips), name, t)] = float(value)
+            result[(int(cfips), name, t + 12)] = float(value)
+
+
 def build_train(
     train_df: pd.DataFrame,
     census_df: pd.DataFrame,
     population_dict: dict[tuple[int, int], int],
+    other_features: dict,
 ) -> tuple[np.array, np.array]:
     train_builder = defaultdict(lambda: TimeSeriesBuilder(n_timesteps=T_AVAILABLE))
 
@@ -140,6 +188,10 @@ def build_train(
         assert abs(density - active * 100 / population) < 1
         feature_dict["density"][timestep] = density
         merge_census(census_df, cfips, feature_dict, timestep, year)
+
+    for (cfips, name, t), value in other_features.items():
+        if t < T_AVAILABLE and cfips in train_builder.keys():
+            train_builder[cfips].features[name][t] = value
 
     X_train = np.stack([series.build_X() for series in train_builder.values()])
     y_train = np.stack([series.build_y() for series in train_builder.values()])
@@ -194,6 +246,7 @@ def build_test(
     sample_df: pd.DataFrame,
     census_df: pd.DataFrame,
     population_dict: dict[tuple[int, int], int],
+    other_features: dict,
 ) -> np.array:
     """
     X_test should be in the same format as X_train,
@@ -214,8 +267,29 @@ def build_test(
         feature_dict["density"][timestep] = density
         merge_census(census_df, cfips, feature_dict, timestep, year)
 
+    for (cfips, name, t), value in other_features.items():
+        if T_AVAILABLE <= t < T_AVAILABLE + T_PREDICT and cfips in test_builder.keys():
+            test_builder[cfips].features[name][t - T_AVAILABLE] = value
+
     X_test = np.stack([series.build_X() for series in test_builder.values()])
     return X_test
+
+
+def whiten(A, pipeline=None):
+    from sklearn.decomposition import PCA
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import RobustScaler
+
+    shape = A.shape
+    A = A.reshape(-1, A.shape[-1])
+    if not pipeline:
+        pipeline = Pipeline(
+            [
+                ("scale", RobustScaler()),
+                ("pca", PCA(n_components=A.shape[-1])),
+            ]
+        ).fit(A)
+    return pipeline.transform(A).reshape(shape), pipeline
 
 
 def build_dataset() -> tuple[torch.tensor, torch.tensor]:
@@ -230,11 +304,17 @@ def build_dataset() -> tuple[torch.tensor, torch.tensor]:
     train_df = pd.concat([pd.read_csv("train.csv"), pd.read_csv("revealed_test.csv")])
     census_df = pd.read_csv("census_starter.csv").set_index("cfips")
     population_dict = torch.load("population.p")
-    X_train, y_train = build_train(train_df, census_df, population_dict)
+    other_features = dict()
+    build_VF_indcom(other_features)
+
+    X_train, y_train = build_train(train_df, census_df, population_dict, other_features)
     X_train, y_train, pipeline = clean_train(X_train, y_train)
     sample_df = pd.read_csv("sample_submission.csv")
-    X_test = build_test(sample_df, census_df, population_dict)
+    X_test = build_test(sample_df, census_df, population_dict, other_features)
     X_test = pipeline.transform(X_test)
+
+    X_train[:, :, 1:], pipeline = whiten(X_train[:, :, 1:])
+    X_test[:, :, 1:], pipeline = whiten(X_test[:, :, 1:])
 
     f32 = lambda x: torch.tensor(x, dtype=torch.float32)
     return f32(X_train), f32(y_train), f32(X_test)

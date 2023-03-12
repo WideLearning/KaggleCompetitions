@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import torch
 from matplotlib import pyplot as plt
+from subvis import visualize
 
 from solve import (
     last_density,
@@ -11,6 +12,7 @@ from solve import (
     row_linear_extra_log,
     row_linear_add,
     row_mlp_add,
+    arima,
 )
 
 """
@@ -80,8 +82,10 @@ def validate(
 
 
 val_len, skip, r = 3, 2, T_AVAILABLE
-result = validate(row_mlp_add, 0, r - val_len - skip, r - val_len, r, visualize=True)
+result = validate(row_linear_add, 0, r - val_len - skip, r - val_len, r, visualize=True)
 print("SMAPE:", result)
 
-# y_test = row_mlp_add(X_train, y_train, X_test)
-# submission(y_test, "submissions/row_mlp_add.csv")
+y_test = arima(X_train, y_train, X_test)
+name = "row_linear_add"
+submission(y_test, f"submissions/{name}.csv")
+visualize(name)

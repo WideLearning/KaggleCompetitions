@@ -7,6 +7,11 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import RobustScaler
 from tqdm import tqdm
+from statsmodels.tsa.api import SARIMAX, AutoReg
+from statsmodels.tsa.arima.model import ARIMA
+import warnings
+
+warnings.filterwarnings("ignore")
 
 
 def noise(
@@ -308,6 +313,49 @@ def row_mlp_add(
             row = X_test[i, j].reshape(1, -1)
             p = (prev + estimator.predict(row)).item()
             y_test[i, j] = p
+
+    y_test = y_test.exp()
+    return y_test
+
+
+def arima(
+    X_train: torch.Tensor, y_train: torch.Tensor, X_test: torch.Tensor
+) -> torch.Tensor:
+    N_SERIES, N_FEATURES = X_train.size(0), X_train.size(2)
+    T_AVAILABLE, T_PREDICT = X_train.size(1), X_test.size(1)
+    assert X_train.shape == (N_SERIES, T_AVAILABLE, N_FEATURES)
+    assert y_train.shape == (N_SERIES, T_AVAILABLE)
+    assert X_test.shape == (N_SERIES, T_PREDICT, N_FEATURES)
+
+    pop_train = X_train[:, :, 0].clone()
+    pop_test = X_test[:, :, 0].clone()
+
+    pipeline = Pipeline(
+        [
+            ("A", Reshaper([-1, N_FEATURES])),
+            ("B", RobustScaler()),
+            ("C", Reshaper([N_SERIES, -1, N_FEATURES])),
+        ]
+    )
+
+    X_train = pipeline.fit_transform(X_train)
+    X_test = pipeline.transform(X_test)
+    y_train = y_train.clamp_min(min=1).log().numpy()
+
+    y_test = torch.empty((N_SERIES, T_PREDICT))
+    for i in tqdm(range(N_SERIES)):
+        if pop_train[i, -1] > 25000:
+            # model = SARIMAX(y_train[i], exog=X_train[i], order=(1, 0, 0))
+            model = ARIMA(y_train[i], order=(0, 1, [1, 6, 12]))
+            model = model.fit()
+            y_test[i] = torch.tensor(
+                model.predict(
+                    start=T_AVAILABLE, end=T_AVAILABLE + T_PREDICT - 1
+                )
+            )
+        else:
+            y_test[i] = y_train[i, -1].item()
+        y_test[i] += (pop_train[i, -1] / pop_test[i, 0] + 1e-9).log()
 
     y_test = y_test.exp()
     return y_test
