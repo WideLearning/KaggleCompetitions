@@ -22,7 +22,7 @@ TODO:
 - check https://www.kaggle.com/competitions/godaddy-microbusiness-density-forecasting/discussion/375802
 """
 
-N_SERIES, N_FEATURES = 3135, 10
+N_SERIES, N_FEATURES = 3135, 45
 T_AVAILABLE, T_REVEALED, T_PREDICT = 41, 2, 6
 
 X_train = torch.load("X_train.p")
@@ -82,7 +82,7 @@ def validate(
 
 
 val_len, skip, r = 3, 2, T_AVAILABLE
-result = validate(row_mlp_add, 0, r - val_len - skip, r - val_len, r, visualize=True)
+result = validate(row_linear_add, 0, r - val_len - skip, r - val_len, r, visualize=True)
 print("SMAPE:", result)
 
 # y_test = row_mlp_add(X_train, y_train, X_test)

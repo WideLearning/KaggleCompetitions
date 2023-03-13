@@ -300,7 +300,7 @@ def row_mlp_add(
     y_delta = y_train - y_shifted
 
     estimator = MLPRegressor(
-        hidden_layer_sizes=(128, 16, 16, 16, 16),
+        hidden_layer_sizes=(256, 32, 16),
         activation="relu",
         solver="adam",
         alpha=0.0001,

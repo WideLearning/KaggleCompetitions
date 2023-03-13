@@ -32,41 +32,41 @@ FEATURE_NAMES, TARGET_NAME = [
     "merchants_rank",
     "orders_rank",
     # from big_data
-    "big_0",
-    "big_1",
-    "big_2",
-    "big_3",
-    "big_4",
-    "big_5",
-    "big_6",
-    "big_7",
-    "big_8",
-    "big_9",
-    "big_10",
-    "big_11",
-    "big_12",
-    "big_13",
-    "big_14",
-    "big_15",
-    "big_16",
-    "big_17",
-    "big_18",
-    "big_19",
-    "big_20",
-    "big_21",
-    "big_22",
-    "big_23",
-    "big_24",
-    "big_25",
-    "big_26",
-    "big_27",
-    "big_28",
-    "big_29",
-    "big_30",
-    "big_31",
-    "big_32",
-    "big_33",
-    "big_34",
+    # "big_0",
+    # "big_1",
+    # "big_2",
+    # "big_3",
+    # "big_4",
+    # "big_5",
+    # "big_6",
+    # "big_7",
+    # "big_8",
+    # "big_9",
+    # "big_10",
+    # "big_11",
+    # "big_12",
+    # "big_13",
+    # "big_14",
+    # "big_15",
+    # "big_16",
+    # "big_17",
+    # "big_18",
+    # "big_19",
+    # "big_20",
+    # "big_21",
+    # "big_22",
+    # "big_23",
+    # "big_24",
+    # "big_25",
+    # "big_26",
+    # "big_27",
+    # "big_28",
+    # "big_29",
+    # "big_30",
+    # "big_31",
+    # "big_32",
+    # "big_33",
+    # "big_34",
     # target
     "density",
 ], "density"
@@ -227,6 +227,8 @@ def build_train(
         merge_census(census_df, cfips, feature_dict, timestep, year)
 
     for (cfips, name, t), value in other_features.items():
+        if name not in FEATURE_NAMES:
+            continue
         if t < T_AVAILABLE and cfips in train_builder.keys():
             train_builder[cfips].features[name][t] = value
 
@@ -305,6 +307,8 @@ def build_test(
         merge_census(census_df, cfips, feature_dict, timestep, year)
 
     for (cfips, name, t), value in other_features.items():
+        if name not in FEATURE_NAMES:
+            continue
         if T_AVAILABLE <= t < T_AVAILABLE + T_PREDICT and cfips in test_builder.keys():
             test_builder[cfips].features[name][t - T_AVAILABLE] = value
 
@@ -339,6 +343,25 @@ def build_big(other_features: dict, cfips: list):
                 other_features[(c, f"big_{i}", t)] = arr[t, i]
 
 
+def add_differences(X: np.array, feature_range: tuple[int, int], k: int) -> np.array:
+    """
+    Adds new features of form X[i, j, t] - X[i, j - k, t] for all features in feature_range.
+    X: np.array, float32[n_series, n_timesteps, n_features]
+        Array with features.
+    feature_range: tuple[int, int]
+        feature_range = (l, r) means features from X[:, :, l] to X[:, :, r - 1].
+    k: int
+        Lag with which to calculate differences.
+    Returns
+        X: np.array
+    """
+    n_series, n_timesteps, n_features = X.shape
+    l, r = feature_range
+    shifted_X = np.concatenate((np.zeros((n_series, k, n_features)), X[:, :-k]), axis=1)
+    X = np.concatenate((X, (X - shifted_X)[:, :, l:r]), axis=2)
+    return X
+
+
 def build_dataset() -> tuple[torch.tensor, torch.tensor]:
     """
     Returns:
@@ -353,7 +376,7 @@ def build_dataset() -> tuple[torch.tensor, torch.tensor]:
     population_dict = torch.load("population.p")
     other_features = dict()
     build_VF_indcom(other_features)
-    build_big(other_features, census_df.index)
+    # build_big(other_features, census_df.index)
     X_train, y_train = build_train(train_df, census_df, population_dict, other_features)
     print("train", X_train.shape, y_train.shape)
     X_train, y_train, pipeline = clean_train(X_train, y_train)
@@ -365,7 +388,14 @@ def build_dataset() -> tuple[torch.tensor, torch.tensor]:
     print("clean test", X_test.shape)
 
     X_train[:, :, 1:], pipeline = whiten(X_train[:, :, 1:])
-    X_test[:, :, 1:], pipeline = whiten(X_test[:, :, 1:])
+    X_test[:, :, 1:], _ = whiten(X_test[:, :, 1:])
+
+    X_merged = np.concatenate((X_train, X_test), axis=1)
+    feature_range = (1, X_train.shape[2])
+    X_merged = add_differences(X_merged, feature_range, 1)
+    # X_merged = add_differences(X_merged, feature_range, 2)
+
+    X_train, X_test = np.split(X_merged, [X_train.shape[1]], axis=1)
 
     f32 = lambda x: torch.tensor(x, dtype=torch.float32)
     return f32(X_train), f32(y_train), f32(X_test)
